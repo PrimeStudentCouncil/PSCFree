@@ -20,7 +20,7 @@ jobs:
       - name: Clone Private Repository
         shell: pwsh
         run: |
-          git clone --depth=1 https://x-access-token:${{ secrets.PRIVATE_REPO_TOKEN }}@github.com/PrimeStudentCouncil/BlueArchiveAutoDump.git source
+          git clone --depth=1 https://x-access-token:${{ secrets.KTNTOKEN }}@github.com/PrimeStudentCouncil/BlueArchiveAutoDump.git source
 
       - name: Install dependencies from private repo
         shell: pwsh

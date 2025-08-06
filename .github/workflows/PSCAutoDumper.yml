@@ -4,7 +4,7 @@ on:
   repository_dispatch:
     types: [PSCtrigger]
 jobs:
-  free-dumper-job:
+  psc-free-dumper:
     if: ${{ github.event.client_payload.tag == 'PSCtrigger-Free' }}
     runs-on: windows-latest
 

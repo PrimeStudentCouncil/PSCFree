@@ -2,8 +2,7 @@ name: PSC Free Dumper
 
 on:
   repository_dispatch:
-    types: [PSCtrigger]  # 监听私仓触发的事件类型
-
+    types: [PSCtrigger]
 jobs:
   free-dumper-job:
     if: ${{ github.event.client_payload.tag == 'PSCtrigger-Free' }}

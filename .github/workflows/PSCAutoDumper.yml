@@ -3,6 +3,7 @@ name: PSC Free Dumper
 on:
   repository_dispatch:
     types: [PSCtrigger]
+
 jobs:
   free-dumper-job:
     if: ${{ github.event.client_payload.tag == 'PSCtrigger-Free' }}
@@ -19,15 +20,11 @@ jobs:
 
       - name: Clone Private Repository
         shell: pwsh
-        run: |
-          git clone --depth=1 https://x-access-token:${{ secrets.KTNTOKEN }}@github.com/PrimeStudentCouncil/BlueArchiveAutoDump.git source
-
-      - name: cd source
-        shell: pwsh
-        run: cd source
+        run: git clone --depth=1 https://x-access-token:${{ secrets.KTNTOKEN }}@github.com/PrimeStudentCouncil/BlueArchiveAutoDump.git source
 
       - name: Install dependencies from private repo
         shell: pwsh
+        working-directory: source
         run: |
           if (Test-Path requirements.txt) {
             pip install -r requirements.txt
@@ -37,18 +34,18 @@ jobs:
 
       - name: Run main.py from private repo
         shell: pwsh
-        run: |
-          python main.py
+        working-directory: source
+        run: python main.py
 
       - name: Push dump_extracted/Japan & Global with versioned commit message
         shell: pwsh
         run: |
-          # 配置git用户
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           git config --global user.name "github-actions[bot]"
 
           Write-Host "Cloning PSC repository..."
           git clone --depth=1 https://x-access-token:${{ secrets.KTNTOKEN }}@github.com/PrimeStudentCouncil/BlueArchiveExcel.git PSCRepo
+
           Set-Location PSCRepo
 
           Write-Host "Cleaning Japan and Global folders..."
@@ -56,8 +53,8 @@ jobs:
           if (Test-Path Global) { Remove-Item Global\* -Recurse -Force }
 
           Write-Host "Copying new dump_extracted data..."
-          Copy-Item ..\dump_extracted\Japan\* -Destination Japan\ -Recurse -Force
-          Copy-Item ..\dump_extracted\Global\* -Destination Global\ -Recurse -Force
+          Copy-Item ..\source\dump_extracted\Japan\* -Destination Japan\ -Recurse -Force
+          Copy-Item ..\source\dump_extracted\Global\* -Destination Global\ -Recurse -Force
 
           Write-Host "Checking git status..."
           git status

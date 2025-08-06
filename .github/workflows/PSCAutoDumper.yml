@@ -1,0 +1,123 @@
+name: PSC Free Dumper
+
+on:
+  repository_dispatch:
+    types: [PSCtrigger]  # 监听私仓触发的事件类型
+
+jobs:
+  free-dumper-job:
+    if: ${{ github.event.client_payload.tag == 'PSCtrigger-Free' }}
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout this repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Clone Private Repository
+        shell: pwsh
+        run: |
+          git clone --depth=1 https://x-access-token:${{ secrets.PRIVATE_REPO_TOKEN }}@github.com/PrimeStudentCouncil/BlueArchiveAutoDump.git source
+
+      - name: Install dependencies from private repo
+        shell: pwsh
+        run: |
+          if (Test-Path source\requirements.txt) {
+            pip install -r source\requirements.txt
+          } else {
+            Write-Host "No requirements.txt in private repo"
+          }
+
+      - name: Run main.py from private repo
+        shell: pwsh
+        run: |
+          python source\main.py
+
+      - name: Push dump_extracted/Japan & Global with versioned commit message
+        shell: pwsh
+        run: |
+          # 配置git用户
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git config --global user.name "github-actions[bot]"
+
+          Write-Host "Cloning PSC repository..."
+          git clone --depth=1 https://x-access-token:${{ secrets.KTNTOKEN }}@github.com/PrimeStudentCouncil/BlueArchiveExcel.git PSCRepo
+          Set-Location PSCRepo
+
+          Write-Host "Cleaning Japan and Global folders..."
+          if (Test-Path Japan) { Remove-Item Japan\* -Recurse -Force }
+          if (Test-Path Global) { Remove-Item Global\* -Recurse -Force }
+
+          Write-Host "Copying new dump_extracted data..."
+          Copy-Item ..\source\dump_extracted\Japan\* -Destination Japan\ -Recurse -Force
+          Copy-Item ..\source\dump_extracted\Global\* -Destination Global\ -Recurse -Force
+
+          Write-Host "Checking git status..."
+          git status
+
+          git add Japan Global
+
+          $hasJapanChange = (git diff --cached --name-only Japan) -ne ''
+          $hasGlobalChange = (git diff --cached --name-only Global) -ne ''
+
+          if (-not $hasJapanChange -and -not $hasGlobalChange) {
+            Write-Host "No changes detected in Japan or Global folders. Skipping commit and push."
+            exit 0
+          }
+
+          try {
+              $globalJson = Get-Content ..\source\GlobalConfig.json -Raw | ConvertFrom-Json
+              $resourcePath = $globalJson.resource_path
+              $segments = $resourcePath -split '/'
+              $globalVersion = $segments[-2]
+              Write-Host "Global version: $globalVersion"
+          }
+          catch {
+              Write-Warning "Failed to read GlobalConfig.json or parse version. Using 'unknown'."
+              $globalVersion = "unknown"
+          }
+
+          try {
+              $jpJson = Get-Content ..\source\JapanConfig.json -Raw | ConvertFrom-Json
+
+              $addressablesCatalogUrlRoot = $null
+              if ($jpJson.ConnectionGroups -and $jpJson.ConnectionGroups[0].OverrideConnectionGroups) {
+                  if ($jpJson.ConnectionGroups[0].OverrideConnectionGroups.Count -gt 1) {
+                      $addressablesCatalogUrlRoot = $jpJson.ConnectionGroups[0].OverrideConnectionGroups[1].AddressablesCatalogUrlRoot
+                  }
+                  if (-not $addressablesCatalogUrlRoot) {
+                      $addressablesCatalogUrlRoot = $jpJson.ConnectionGroups[0].OverrideConnectionGroups[0].AddressablesCatalogUrlRoot
+                  }
+              }
+              if (-not $addressablesCatalogUrlRoot) {
+                  Write-Warning "Cannot find AddressablesCatalogUrlRoot in JapanConfig.json, using 'unknown'."
+                  $jpVersion = "unknown"
+              }
+              else {
+                  $segments = $addressablesCatalogUrlRoot -split '/'
+                  $jpVersion = $segments[-1]
+                  Write-Host "Japan version: $jpVersion"
+              }
+          }
+          catch {
+              Write-Warning "Failed to read JapanConfig.json or parse version. Using 'unknown'."
+              $jpVersion = "unknown"
+          }
+
+          $commitMessage = ""
+          if ($hasJapanChange) {
+              $commitMessage += "JP $jpVersion "
+          }
+          if ($hasGlobalChange) {
+              $commitMessage += "GL $globalVersion"
+          }
+          $commitMessage = $commitMessage.Trim()
+
+          Write-Host "Commit message: $commitMessage"
+
+          git commit -m $commitMessage
+          git push origin master

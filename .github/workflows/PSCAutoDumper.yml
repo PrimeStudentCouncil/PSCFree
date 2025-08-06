@@ -22,11 +22,15 @@ jobs:
         run: |
           git clone --depth=1 https://x-access-token:${{ secrets.KTNTOKEN }}@github.com/PrimeStudentCouncil/BlueArchiveAutoDump.git source
 
+      - name: cd source
+        shell: pwsh
+        run: cd source
+
       - name: Install dependencies from private repo
         shell: pwsh
         run: |
-          if (Test-Path source\requirements.txt) {
-            pip install -r source\requirements.txt
+          if (Test-Path requirements.txt) {
+            pip install -r requirements.txt
           } else {
             Write-Host "No requirements.txt in private repo"
           }
@@ -34,7 +38,7 @@ jobs:
       - name: Run main.py from private repo
         shell: pwsh
         run: |
-          python source\main.py
+          python main.py
 
       - name: Push dump_extracted/Japan & Global with versioned commit message
         shell: pwsh
@@ -52,8 +56,8 @@ jobs:
           if (Test-Path Global) { Remove-Item Global\* -Recurse -Force }
 
           Write-Host "Copying new dump_extracted data..."
-          Copy-Item ..\source\dump_extracted\Japan\* -Destination Japan\ -Recurse -Force
-          Copy-Item ..\source\dump_extracted\Global\* -Destination Global\ -Recurse -Force
+          Copy-Item ..\dump_extracted\Japan\* -Destination Japan\ -Recurse -Force
+          Copy-Item ..\dump_extracted\Global\* -Destination Global\ -Recurse -Force
 
           Write-Host "Checking git status..."
           git status

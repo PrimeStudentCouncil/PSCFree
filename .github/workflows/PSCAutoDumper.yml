@@ -20,8 +20,7 @@ jobs:
 
       - name: Clone Private Repository
         shell: pwsh
-        run: |
-          git clone --depth=1 https://x-access-token:${{ secrets.KTNTOKEN }}@github.com/PrimeStudentCouncil/BlueArchiveAutoDump.git source
+        run: git clone --depth=1 https://x-access-token:${{ secrets.KTNTOKEN }}@github.com/PrimeStudentCouncil/BlueArchiveAutoDump.git source
 
       - name: Install dependencies from private repo
         shell: pwsh
@@ -31,10 +30,13 @@ jobs:
             pip install -r requirements.txt
           }
 
-      - name: Run main.py from private repo
+      - name: Run main.py from private repo and list dump_extracted contents
         shell: pwsh
         working-directory: source
-        run: python main.py
+        run: |
+          python main.py
+          Write-Host "Listing dump_extracted directory structure under source:"
+          Get-ChildItem -Recurse .\dump_extracted
 
       - name: Push dump_extracted/Japan & Global with versioned commit message
         shell: pwsh
@@ -56,9 +58,9 @@ jobs:
             return $true
           }
 
-          # 这里的路径指向工作目录下的 dump_extracted
-          $japanPath = ".\dump_extracted\Japan"
-          $globalPath = ".\dump_extracted\Global"
+          # 使用相对于当前目录的 source 路径，保持和 Python 脚本输出目录一致
+          $japanPath = ".\source\dump_extracted\Japan"
+          $globalPath = ".\source\dump_extracted\Global"
 
           Write-Host "Checking Japan dump folders validity..."
           $validJapan = Test-DumpFolderValid -basePath $japanPath
@@ -76,7 +78,7 @@ jobs:
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           git config --global user.name "github-actions[bot]"
 
-          Write-Host "Cloning repository..."
+          Write-Host "Cloning repository for Excel data..."
           git clone --depth=1 https://x-access-token:${{ secrets.KTNTOKEN }}@github.com/PrimeStudentCouncil/BlueArchiveExcel.git PSCRepo
 
           Set-Location PSCRepo

@@ -1,0 +1,149 @@
+name: BaData Free Dumper
+
+on:
+  repository_dispatch:
+    types: [BaDatatrigger]
+
+jobs:
+  free-dumper-job:
+    if: ${{ github.event.client_payload.tag == 'BaDatatrigger-Free' }}
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout this repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Clone Private Repository
+        shell: pwsh
+        run: |
+          git clone --depth=1 https://x-access-token:${{ secrets.KTNTOKEN }}@github.com/PrimeStudentCouncil/BlueArchiveAutoDump.git source
+
+      - name: Install dependencies from private repo
+        shell: pwsh
+        working-directory: source
+        run: |
+          if (Test-Path requirements.txt) {
+            pip install -r requirements.txt
+          }
+
+      - name: Run main.py from private repo and list dump_extracted contents
+        shell: pwsh
+        working-directory: source
+        run: |
+          python main.py
+          Write-Host "Listing dump_extracted directory structure under source:"
+          Get-ChildItem -Recurse .\dump_extracted
+
+      - name: Push dump_extracted/Japan & Global with versioned commit message
+        shell: pwsh
+        run: |
+          function Test-DumpFolderValid {
+            param([string]$basePath)
+            $requiredFolders = @("Excel", "ExcelDB", "HexaMap")
+            foreach ($folder in $requiredFolders) {
+              $fullPath = Join-Path $basePath $folder
+              if (-not (Test-Path $fullPath)) {
+                Write-Host "Missing folder: $fullPath"
+                return $false
+              }
+              if (-not (Get-ChildItem $fullPath -File -Recurse | Where-Object { $_.Length -gt 0 })) {
+                Write-Host "Folder empty: $fullPath"
+                return $false
+              }
+            }
+            return $true
+          }
+
+          $baseDir = Get-Location
+          $japanPath = Join-Path $baseDir "source\dump_extracted\Japan"
+          $globalPath = Join-Path $baseDir "source\dump_extracted\Global"
+
+          Write-Host "Checking Japan dump folders validity..."
+          $validJapan = Test-DumpFolderValid -basePath $japanPath
+          Write-Host "Japan valid: $validJapan"
+
+          Write-Host "Checking Global dump folders validity..."
+          $validGlobal = Test-DumpFolderValid -basePath $globalPath
+          Write-Host "Global valid: $validGlobal"
+
+          if (-not $validJapan -and -not $validGlobal) {
+            Write-Host "Neither Japan nor Global dumps are valid. Exiting early."
+            exit 0
+          }
+
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git config --global user.name "github-actions[bot]"
+
+          Write-Host "Cloning repository for Excel data..."
+          git clone --depth=1 https://x-access-token:${{ secrets.KTNTOKEN }}@github.com/BanterSR/BaData.git BaDataRepo
+
+          Write-Host "Cleaning old folders..."
+          Remove-Item BaDataRepo\Japan -Recurse -Force -ErrorAction SilentlyContinue
+          Remove-Item BaDataRepo\Global -Recurse -Force -ErrorAction SilentlyContinue
+
+          New-Item -ItemType Directory -Force -Path BaDataRepo\Japan | Out-Null
+          New-Item -ItemType Directory -Force -Path BaDataRepo\Global | Out-Null
+
+          if ($validJapan) {
+            Write-Host "Copying Japan dump data..."
+            Copy-Item "$japanPath\*" -Destination BaDataRepo\Japan\ -Recurse -Force
+          }
+
+          if ($validGlobal) {
+            Write-Host "Copying Global dump data..."
+            Copy-Item "$globalPath\*" -Destination BaDataRepo\Global\ -Recurse -Force
+          }
+
+          Set-Location BaDataRepo
+
+          Write-Host "Staging files for commit..."
+          git add Japan Global
+
+          Write-Host "Files staged for commit:"
+          git diff --cached --name-only
+
+          $hasJapanChange = (git diff --cached --name-only Japan) -ne ''
+          $hasGlobalChange = (git diff --cached --name-only Global) -ne ''
+
+          Write-Host "Japan changes staged: $hasJapanChange"
+          Write-Host "Global changes staged: $hasGlobalChange"
+
+          if (-not $hasJapanChange -and -not $hasGlobalChange) {
+            Write-Host "No changes detected, skipping commit and push."
+            exit 0
+          }
+
+          try {
+              $versionJson = Get-Content ..\source\Version.json -Raw | ConvertFrom-Json
+              $jpVersion = if ($versionJson.jp_version) { $versionJson.jp_version } else { "unknown" }
+              $globalVersion = if ($versionJson.global_version) { $versionJson.global_version } else { "unknown" }
+          } catch {
+              $jpVersion = "unknown"
+              $globalVersion = "unknown"
+          }
+
+          $commitMessage = ""
+          if ($hasJapanChange) { $commitMessage += "JP $jpVersion " }
+          if ($hasGlobalChange) { $commitMessage += "GL $globalVersion" }
+          $commitMessage = $commitMessage.Trim()
+
+          Write-Host "Committing with message: $commitMessage"
+          git commit -m "$commitMessage"
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host "git commit failed with exit code $LASTEXITCODE"
+            exit 1
+          }
+
+          Write-Host "Pushing to origin master..."
+          git push origin master
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host "git push failed with exit code $LASTEXITCODE"
+            exit 1
+          }
+
+          Write-Host "Push completed successfully."

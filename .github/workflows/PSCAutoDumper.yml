@@ -20,7 +20,8 @@ jobs:
 
       - name: Clone Private Repository
         shell: pwsh
-        run: git clone --depth=1 https://x-access-token:${{ secrets.KTNTOKEN }}@github.com/PrimeStudentCouncil/BlueArchiveAutoDump.git source
+        run: |
+          git clone --depth=1 https://x-access-token:${{ secrets.KTNTOKEN }}@github.com/PrimeStudentCouncil/BlueArchiveAutoDump.git source
 
       - name: Install dependencies from private repo
         shell: pwsh
@@ -50,7 +51,7 @@ jobs:
                 Write-Host "Missing folder: $fullPath"
                 return $false
               }
-              if (-not (Test-Path "$fullPath\*" -PathType Leaf)) {
+              if (-not (Get-ChildItem $fullPath -File -Recurse | Where-Object { $_.Length -gt 0 })) {
                 Write-Host "Folder empty: $fullPath"
                 return $false
               }
@@ -58,9 +59,9 @@ jobs:
             return $true
           }
 
-          # 使用相对于当前目录的 source 路径，保持和 Python 脚本输出目录一致
-          $japanPath = ".\source\dump_extracted\Japan"
-          $globalPath = ".\source\dump_extracted\Global"
+          $baseDir = Get-Location
+          $japanPath = Join-Path $baseDir "source\dump_extracted\Japan"
+          $globalPath = Join-Path $baseDir "source\dump_extracted\Global"
 
           Write-Host "Checking Japan dump folders validity..."
           $validJapan = Test-DumpFolderValid -basePath $japanPath
@@ -81,24 +82,24 @@ jobs:
           Write-Host "Cloning repository for Excel data..."
           git clone --depth=1 https://x-access-token:${{ secrets.KTNTOKEN }}@github.com/PrimeStudentCouncil/BlueArchiveExcel.git PSCRepo
 
-          Set-Location PSCRepo
-
           Write-Host "Cleaning old folders..."
-          if (Test-Path Japan) { Remove-Item Japan -Recurse -Force }
-          if (Test-Path Global) { Remove-Item Global -Recurse -Force }
+          Remove-Item PSCRepo\Japan -Recurse -Force -ErrorAction SilentlyContinue
+          Remove-Item PSCRepo\Global -Recurse -Force -ErrorAction SilentlyContinue
 
-          New-Item -ItemType Directory -Force -Path Japan | Out-Null
-          New-Item -ItemType Directory -Force -Path Global | Out-Null
+          New-Item -ItemType Directory -Force -Path PSCRepo\Japan | Out-Null
+          New-Item -ItemType Directory -Force -Path PSCRepo\Global | Out-Null
 
           if ($validJapan) {
             Write-Host "Copying Japan dump data..."
-            Copy-Item "$japanPath\*" -Destination Japan\ -Recurse -Force
+            Copy-Item "$japanPath\*" -Destination PSCRepo\Japan\ -Recurse -Force
           }
 
           if ($validGlobal) {
             Write-Host "Copying Global dump data..."
-            Copy-Item "$globalPath\*" -Destination Global\ -Recurse -Force
+            Copy-Item "$globalPath\*" -Destination PSCRepo\Global\ -Recurse -Force
           }
+
+          Set-Location PSCRepo
 
           Write-Host "Staging files for commit..."
           git add Japan Global
@@ -141,10 +142,8 @@ jobs:
           if ($hasGlobalChange) { $commitMessage += "GL $globalVersion" }
           $commitMessage = $commitMessage.Trim()
 
-          Write-Host "Commit message: $commitMessage"
-
-          Write-Host "Committing..."
-          git commit -m $commitMessage
+          Write-Host "Committing with message: $commitMessage"
+          git commit -m "$commitMessage"
           if ($LASTEXITCODE -ne 0) {
             Write-Host "git commit failed with exit code $LASTEXITCODE"
             exit 1

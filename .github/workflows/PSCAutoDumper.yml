@@ -20,7 +20,8 @@ jobs:
 
       - name: Clone Private Repository
         shell: pwsh
-        run: git clone --depth=1 https://x-access-token:${{ secrets.KTNTOKEN }}@github.com/PrimeStudentCouncil/BlueArchiveAutoDump.git source
+        run: |
+          git clone --depth=1 https://x-access-token:${{ secrets.KTNTOKEN }}@github.com/PrimeStudentCouncil/BlueArchiveAutoDump.git source
 
       - name: Install dependencies from private repo
         shell: pwsh
@@ -55,8 +56,9 @@ jobs:
             return $true
           }
 
-          $japanPath = "..\source\dump_extracted\Japan"
-          $globalPath = "..\source\dump_extracted\Global"
+          # 这里的路径指向工作目录下的 dump_extracted
+          $japanPath = ".\dump_extracted\Japan"
+          $globalPath = ".\dump_extracted\Global"
 
           Write-Host "Checking Japan dump folders validity..."
           $validJapan = Test-DumpFolderValid -basePath $japanPath
@@ -99,6 +101,9 @@ jobs:
           Write-Host "Staging files for commit..."
           git add Japan Global
 
+          Write-Host "Files staged for commit:"
+          git diff --cached --name-only
+
           $hasJapanChange = (git diff --cached --name-only Japan) -ne ''
           $hasGlobalChange = (git diff --cached --name-only Global) -ne ''
 
@@ -109,9 +114,6 @@ jobs:
             Write-Host "No changes detected, skipping commit and push."
             exit 0
           }
-
-          Write-Host "Files staged for commit:"
-          git diff --cached --name-only
 
           try {
             $globalJson = Get-Content ..\source\GlobalConfig.json -Raw | ConvertFrom-Json

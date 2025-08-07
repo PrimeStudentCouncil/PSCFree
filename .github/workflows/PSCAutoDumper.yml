@@ -119,22 +119,12 @@ jobs:
           }
 
           try {
-            $globalJson = Get-Content ..\source\GlobalConfig.json -Raw | ConvertFrom-Json
-            $globalVersion = ($globalJson.resource_path -split '/')[ -2 ]
+              $versionJson = Get-Content ..\source\Version.json -Raw | ConvertFrom-Json
+              $jpVersion = if ($versionJson.jp_version) { $versionJson.jp_version } else { "unknown" }
+              $globalVersion = if ($versionJson.global_version) { $versionJson.global_version } else { "unknown" }
           } catch {
-            $globalVersion = "unknown"
-          }
-
-          try {
-            $jpJson = Get-Content ..\source\JapanConfig.json -Raw | ConvertFrom-Json
-            $jpVerRoot = $null
-            if ($jpJson.ConnectionGroups -and $jpJson.ConnectionGroups[0].OverrideConnectionGroups) {
-              $grp = $jpJson.ConnectionGroups[0].OverrideConnectionGroups
-              $jpVerRoot = if ($grp.Count -gt 1) { $grp[1].AddressablesCatalogUrlRoot } else { $grp[0].AddressablesCatalogUrlRoot }
-            }
-            $jpVersion = if ($jpVerRoot) { ($jpVerRoot -split '/')[ -1 ] } else { "unknown" }
-          } catch {
-            $jpVersion = "unknown"
+              $jpVersion = "unknown"
+              $globalVersion = "unknown"
           }
 
           $commitMessage = ""

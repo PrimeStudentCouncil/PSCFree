@@ -139,8 +139,8 @@ jobs:
             exit 1
           }
 
-          Write-Host "Pushing to origin master..."
-          git push origin master
+          Write-Host "Pushing to origin main..."
+          git push origin main
           if ($LASTEXITCODE -ne 0) {
             Write-Host "git push failed with exit code $LASTEXITCODE"
             exit 1

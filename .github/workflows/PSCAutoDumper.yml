@@ -44,9 +44,11 @@ jobs:
             foreach ($folder in $requiredFolders) {
               $fullPath = Join-Path $basePath $folder
               if (-not (Test-Path $fullPath)) {
+                Write-Host "Missing folder: $fullPath"
                 return $false
               }
               if (-not (Test-Path "$fullPath\*" -PathType Leaf)) {
+                Write-Host "Folder empty: $fullPath"
                 return $false
               }
             }
@@ -56,20 +58,28 @@ jobs:
           $japanPath = "..\source\dump_extracted\Japan"
           $globalPath = "..\source\dump_extracted\Global"
 
+          Write-Host "Checking Japan dump folders validity..."
           $validJapan = Test-DumpFolderValid -basePath $japanPath
+          Write-Host "Japan valid: $validJapan"
+
+          Write-Host "Checking Global dump folders validity..."
           $validGlobal = Test-DumpFolderValid -basePath $globalPath
+          Write-Host "Global valid: $validGlobal"
 
           if (-not $validJapan -and -not $validGlobal) {
+            Write-Host "Neither Japan nor Global dumps are valid. Exiting early."
             exit 0
           }
 
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           git config --global user.name "github-actions[bot]"
 
+          Write-Host "Cloning repository..."
           git clone --depth=1 https://x-access-token:${{ secrets.KTNTOKEN }}@github.com/PrimeStudentCouncil/BlueArchiveExcel.git PSCRepo
 
           Set-Location PSCRepo
 
+          Write-Host "Cleaning old folders..."
           if (Test-Path Japan) { Remove-Item Japan -Recurse -Force }
           if (Test-Path Global) { Remove-Item Global -Recurse -Force }
 
@@ -77,21 +87,31 @@ jobs:
           New-Item -ItemType Directory -Force -Path Global | Out-Null
 
           if ($validJapan) {
+            Write-Host "Copying Japan dump data..."
             Copy-Item "$japanPath\*" -Destination Japan\ -Recurse -Force
           }
 
           if ($validGlobal) {
+            Write-Host "Copying Global dump data..."
             Copy-Item "$globalPath\*" -Destination Global\ -Recurse -Force
           }
 
+          Write-Host "Staging files for commit..."
           git add Japan Global
 
           $hasJapanChange = (git diff --cached --name-only Japan) -ne ''
           $hasGlobalChange = (git diff --cached --name-only Global) -ne ''
 
+          Write-Host "Japan changes staged: $hasJapanChange"
+          Write-Host "Global changes staged: $hasGlobalChange"
+
           if (-not $hasJapanChange -and -not $hasGlobalChange) {
+            Write-Host "No changes detected, skipping commit and push."
             exit 0
           }
+
+          Write-Host "Files staged for commit:"
+          git diff --cached --name-only
 
           try {
             $globalJson = Get-Content ..\source\GlobalConfig.json -Raw | ConvertFrom-Json
@@ -117,5 +137,20 @@ jobs:
           if ($hasGlobalChange) { $commitMessage += "GL $globalVersion" }
           $commitMessage = $commitMessage.Trim()
 
+          Write-Host "Commit message: $commitMessage"
+
+          Write-Host "Committing..."
           git commit -m $commitMessage
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host "git commit failed with exit code $LASTEXITCODE"
+            exit 1
+          }
+
+          Write-Host "Pushing to origin master..."
           git push origin master
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host "git push failed with exit code $LASTEXITCODE"
+            exit 1
+          }
+
+          Write-Host "Push completed successfully."
